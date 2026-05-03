@@ -1,0 +1,180 @@
+Accessilife — Mobile App Integration Guide
+This document describes the existing Accessilife backend and brand system as it would be consumed by a native mobile app (iOS / Android, e.g. via Expo + React Native). It is intended for whoever builds the mobile client. The mobile app would be a new artifact in this monorepo (e.g. artifacts/accessilife-mobile), not a fork of the website.
+
+1. What Accessilife is
+A clone of accessilife.com.au — an Australian NDIS (National Disability Insurance Scheme) directory, marketplace, and community platform. End users fall into three roles:
+
+member — default role. Browses providers/products/events, posts to the community board, RSVPs, sends enquiries, leaves reviews, favourites listings.
+provider — a member who owns one or more provider listings. Pays an annual subscription (Stripe) to keep listings publicly visible. Receives enquiries.
+admin — moderates providers, posts, products, events, claims, and enquiries. Granted manually in DB (UPDATE users SET role='admin' WHERE id=...).
+The mobile app should at minimum support the member role; provider self-service and admin moderation can stay web-only for v1.
+
+2. Backend at a glance
+Concern	Tech
+API server	Express 5 (TypeScript), bundled with esbuild
+Database	PostgreSQL via Drizzle ORM
+Auth	Clerk (Replit-managed tenant; dev + prod isolated)
+Validation	Zod (zod/v4) shared with the client
+API contract	OpenAPI 3 (lib/api-spec/openapi.yaml) — single source of truth
+Client codegen	Orval — generates a typed React Query client and Zod schemas from the spec
+Payments	Stripe (provider subscriptions only)
+Email	Simulated outbox in dev; templated transactional emails in prod
+All HTTP traffic from the mobile app goes through the API server. The mobile app should never talk directly to the database.
+
+Base URL
+Dev: https://<your-replit-dev-domain>/api
+Prod: https://accessilife.com.au/api (or whatever PUBLIC_APP_URL points at)
+In dev, prefer process.env.EXPO_PUBLIC_API_BASE_URL so it can be swapped without rebuilding.
+
+3. Authentication (Clerk)
+Clerk is Replit-managed. The web app uses @clerk/react; the mobile app should use @clerk/clerk-expo.
+
+Login methods supported: email/password (with email verification), and SSO via Google, Apple, GitHub, X. Facebook is not supported by Clerk on Replit. SMS sign-in, MFA, and organizations are also not supported.
+Sign in with Apple is required on iOS. Apple App Store Review Guideline 4.8 mandates that any iOS app offering third-party SSO (Google, etc.) must also offer Sign in with Apple, and it must be at least as prominent as the other options. Enable Apple in the workspace Auth pane and surface the Apple button on the sign-in/sign-up screens with equal weight. On Android, Apple is optional but recommended for parity. Use @clerk/clerk-expo's native Apple flow (useOAuth({ strategy: "oauth_apple" })) so the user gets the system-level Apple sheet rather than a web view — this is also a soft App Review expectation.
+Token model: Clerk issues short-lived JWTs. The mobile app obtains a session token via useAuth().getToken() and sends it as Authorization: Bearer <token> on every API call.
+Two isolated environments: dev (test keys) and prod (live keys) have separate user stores — accounts created in dev do not exist in prod.
+Publishable key: mobile app needs EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY. Get the value from the workspace Auth pane.
+Server-side auth helpers (artifacts/api-server/src/lib/auth.ts)
+Helper	Behavior
+requireAuth	401 if no valid Clerk session; loads the user row
+requireAdmin	401 if not signed in, 403 if role !== 'admin'
+maybeAuth	Attaches user if token present; otherwise continues anonymous
+optionalAuth	Same as maybeAuth plus loads role for personalization
+Provisioning
+The /me endpoint (GET /api/me) creates the local users row on first call after Clerk sign-up. The mobile app should hit /me once after sign-in to ensure provisioning, then cache the result.
+
+4. Data model (key tables)
+Defined in lib/db/src/schema/. Drizzle schemas, but the mobile app should consume the OpenAPI/Zod schemas rather than reimplementing types.
+
+Table	Purpose
+users	Clerk user mirror + role + display fields
+providers	Service provider listings (NDIS directory). Has approved, subscription_status, enquiry_count, denormalized review aggregates.
+products	Marketplace items
+events	Community events with RSVP support
+posts	Community board posts (with comments + likes)
+reviews	Reviews on providers
+categories	Taxonomy shared across providers/products/events
+enquiries	In-platform contact-form submissions to providers
+favourites	Member-favourited providers
+consents	Cookie/marketing consent tracking (anonymous via alife_cid)
+subscriptions	Stripe provider subscription state
+email_messages, email_templates	Email outbox + admin-editable templates
+audit_logs	Audit trail of every write
+Public-visibility predicate (important)
+A provider listing is public iff:
+
+approved = true
+AND (owner_user_id IS NULL OR subscription_status IN ('active', 'past_due'))
+
+This is enforced server-side (src/lib/providerVisibility.ts) on /providers, /providers/featured, /providers/{slug}, /search, and /activity/recent. The mobile app does not need to replicate this check — just trust the API responses.
+
+5. Endpoints the mobile app will need
+Full spec lives in lib/api-spec/openapi.yaml (≈3,800 lines, ~70 endpoints). The minimum surface for a v1 member-focused mobile app:
+
+Discovery & content (anonymous OK)
+GET /providers — paginated, filterable directory
+GET /providers/featured
+GET /providers/{slug}
+GET /providers/{slug}/reviews
+GET /products, GET /products/{slug}, GET /products/trending
+GET /events, GET /events/{slug}, GET /events/upcoming
+GET /posts, GET /posts/{id}
+GET /categories
+GET /search?q=... — cross-entity search
+GET /stats, GET /activity/recent
+GET /homepage — CMS-driven homepage blocks (hero, explore cards, etc.)
+Authenticated member actions
+GET /me — provision + fetch profile
+PATCH /me — update profile
+POST /providers/{slug}/favourite, DELETE /providers/{slug}/favourite
+POST /providers/{slug}/enquiries — contact form (honeypot field + 5/hr/IP rate limit)
+POST /events/{slug}/rsvp
+POST /posts — create community post
+POST /posts/{id}/like
+POST /posts/{id}/comments
+POST /providers/{slug}/reviews
+POST /providers/{slug}/claim — claim ownership of an existing listing
+Provider self-service (defer to v2 unless needed)
+GET /me/providers, GET /me/submissions
+GET /me/subscription
+POST /me/billing/checkout-session — opens Stripe Checkout (web view)
+POST /me/billing/portal-session — opens Stripe Customer Portal (web view)
+GET /providers/{slug}/enquiries (provider-owned)
+Admin (skip for mobile v1)
+All /admin/* endpoints — leave to the web app.
+
+6. Generating a typed client for mobile
+The web app already runs pnpm --filter @workspace/api-spec run codegen to generate:
+
+lib/api-client-react/ — React Query hooks (web)
+lib/api-zod/ — runtime Zod schemas (shared)
+For the mobile app, add a parallel target in lib/api-spec/orval.config.ts (or reuse api-client-react if React Query is also used in Expo — it works fine). The Zod schemas can be imported directly from @workspace/api-zod.
+
+Workflow whenever the spec changes:
+
+pnpm --filter @workspace/api-spec run codegen
+
+Then the mobile app rebuilds against the new types. Never hand-write request/response interfaces.
+
+7. Brand & design
+The web brand definitions live in lib/ui/src/styles.css and should be ported, not re-invented.
+
+Palette (live-site sage):
+Sage primary #7e8e72 (HSL 108 11% 56%)
+Dark sage #5e6b56
+Light sage #cdd6c1
+Neutral warm gray #c3c3bd
+Cream background hsl(42 33% 94%) ≈ #f5ecd5
+Ochre accent (used for icons / highlights)
+Deep forest text hsl(120 10% 20%)
+Typography: Inter (sans), Fraunces (serif headings).
+Accessibility: the website targets WCAG 2.1 AA contrast and ships a contrast toggle. The mobile app should:
+Honor system Dynamic Type / font-scaling.
+Provide a high-contrast mode mirroring the web toggle.
+Use semantic accessibility labels on every interactive element (this is accessibilityLabel in React Native).
+Respect prefers-reduced-motion for animations.
+Tone: warm, plain-language Australian English. Avoid medical jargon.
+8. Cross-cutting concerns
+Cookie consent vs. mobile: the website tracks consent in a alife_cid cookie via /api/consent. On mobile, replicate this with a one-time consent screen and post the same payload using a UUID stored in secure storage. Necessary categories are always on; analytics + marketing are opt-in.
+Audit logging: every write is audit-logged server-side. The mobile app does not need to do anything special.
+Rate limits: enquiries are limited to 5/hr per IP per provider. Excess submissions return 200 (silently dropped + audit-logged) — do not show a misleading success state if the user spams the form; debounce client-side.
+Email: when a member sends an enquiry, the server emails the provider and confirms to the member. The mobile app just needs to surface the success/failure of the POST.
+Images: providers/products carry image URLs (currently external). If image upload from mobile is needed, use the existing object-storage skill setup; do not bake images into the API server.
+SEO: N/A on mobile.
+9. Stripe (provider subscriptions)
+If the mobile app exposes provider self-service:
+
+Do not implement Stripe Checkout natively. Use a web view that opens the URL returned by POST /me/billing/checkout-session, then deep-link back to the app on success/cancel.
+Same pattern for POST /me/billing/portal-session (manage subscription, view invoices).
+Apple App Store policy: subscriptions sold for digital goods consumed inside the app must use IAP. Provider subscriptions here pay for off-app business listing visibility, which generally falls under the "service rendered outside the app" exception (similar to Airbnb / Uber Eats Pro). Confirm with App Review before submission; if Apple pushes back, the simplest workaround is to keep the upgrade flow web-only and surface a "Manage subscription on the web" link.
+Plan: A$199/year GST-inclusive. Tax invoices include the operator's ABN — no mobile-side handling needed.
+10. Suggested mobile project structure
+If/when you create the mobile artifact:
+
+artifacts/accessilife-mobile/
+  artifact.toml             # kind = "mobile", uses Expo
+  app.config.ts
+  src/
+    api/                    # thin wrapper around generated client
+    auth/                   # ClerkProvider + token bridge for fetch
+    screens/
+      Home.tsx
+      ProviderList.tsx
+      ProviderDetail.tsx
+      Marketplace.tsx
+      Events.tsx
+      Community.tsx
+      Profile.tsx
+      Auth/SignIn.tsx
+      Auth/SignUp.tsx
+    components/             # brand-styled primitives
+    theme/                  # palette + typography ported from lib/ui
+
+Use the expo skill in this repo for permissions, animations, and React Context patterns, and the mobile-ui skill for UI guidance. For auth, follow the clerk-auth skill.
+
+11. Open questions / decisions for later
+Push notifications — not implemented server-side yet. Adding them needs a device_tokens table, Expo push integration, and triggers on (a) enquiry replies, (b) event reminders, (c) post replies/likes. Out of scope for a first cut.
+Offline support — TanStack Query persistence + a cache strategy per screen. Probably not needed for v1.
+Deep links — define a URL scheme (e.g. accessilife://providers/<slug>) and matching universal links so emails/web links open the app.
+App Store / Play Store metadata — privacy manifest, data-collection disclosures, content rating (likely 4+ / Everyone).
+Facebook login — not possible without swapping auth provider; see §3.
