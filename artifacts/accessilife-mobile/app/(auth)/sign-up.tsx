@@ -66,7 +66,9 @@ export default function SignUpScreen() {
   };
 
   const oauth = useCallback(
-    async (strategy: "oauth_google" | "oauth_apple") => {
+    async (
+      strategy: "oauth_google" | "oauth_apple" | "oauth_github" | "oauth_x",
+    ) => {
       try {
         const { createdSessionId, setActive } = await startSSOFlow({
           strategy,
@@ -245,6 +247,22 @@ export default function SignUpScreen() {
               fullWidth
             />
           )}
+          <Button
+            label="Continue with GitHub"
+            variant="outline"
+            onPress={() => oauth("oauth_github")}
+            leadingIcon={<Feather name="github" size={18} color={c.foreground} />}
+            disabled={!accepted}
+            fullWidth
+          />
+          <Button
+            label="Continue with X"
+            variant="outline"
+            onPress={() => oauth("oauth_x")}
+            leadingIcon={<Feather name="twitter" size={18} color={c.foreground} />}
+            disabled={!accepted}
+            fullWidth
+          />
         </View>
 
         <View style={styles.footer}>

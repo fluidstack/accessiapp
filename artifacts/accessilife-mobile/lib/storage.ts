@@ -118,6 +118,100 @@ export type LocalProfile = {
   supports?: string[];
 };
 
+type LocalPost = {
+  id: string;
+  topic: string;
+  title: string;
+  body: string;
+  postedAt: string;
+};
+
+const POSTS_KEY = "accessilife.posts.v1";
+
+export const localPosts = {
+  list: async (): Promise<LocalPost[]> => {
+    const raw = await AsyncStorage.getItem(POSTS_KEY);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw) as LocalPost[];
+    } catch {
+      return [];
+    }
+  },
+  add: async (p: Omit<LocalPost, "id" | "postedAt">) => {
+    const list = await localPosts.list();
+    const next: LocalPost = {
+      ...p,
+      id: Crypto.randomUUID(),
+      postedAt: new Date().toISOString(),
+    };
+    list.unshift(next);
+    await AsyncStorage.setItem(POSTS_KEY, JSON.stringify(list.slice(0, 50)));
+    return next;
+  },
+};
+
+type LocalReply = { id: string; postId: string; body: string; postedAt: string };
+const REPLIES_KEY = "accessilife.replies.v1";
+
+export const localReplies = {
+  listFor: async (postId: string): Promise<LocalReply[]> => {
+    const raw = await AsyncStorage.getItem(REPLIES_KEY);
+    if (!raw) return [];
+    try {
+      return (JSON.parse(raw) as LocalReply[]).filter((r) => r.postId === postId);
+    } catch {
+      return [];
+    }
+  },
+  add: async (postId: string, body: string) => {
+    const raw = await AsyncStorage.getItem(REPLIES_KEY);
+    const all: LocalReply[] = raw ? JSON.parse(raw) : [];
+    all.push({
+      id: Crypto.randomUUID(),
+      postId,
+      body,
+      postedAt: new Date().toISOString(),
+    });
+    await AsyncStorage.setItem(REPLIES_KEY, JSON.stringify(all.slice(-200)));
+  },
+};
+
+type LocalReview = {
+  id: string;
+  providerId: string;
+  stars: number;
+  text: string;
+  postedAt: string;
+};
+const REVIEWS_KEY = "accessilife.reviews.v1";
+
+export const localReviews = {
+  listFor: async (providerId: string): Promise<LocalReview[]> => {
+    const raw = await AsyncStorage.getItem(REVIEWS_KEY);
+    if (!raw) return [];
+    try {
+      return (JSON.parse(raw) as LocalReview[]).filter(
+        (r) => r.providerId === providerId,
+      );
+    } catch {
+      return [];
+    }
+  },
+  add: async (providerId: string, stars: number, text: string) => {
+    const raw = await AsyncStorage.getItem(REVIEWS_KEY);
+    const all: LocalReview[] = raw ? JSON.parse(raw) : [];
+    all.push({
+      id: Crypto.randomUUID(),
+      providerId,
+      stars,
+      text,
+      postedAt: new Date().toISOString(),
+    });
+    await AsyncStorage.setItem(REVIEWS_KEY, JSON.stringify(all.slice(-200)));
+  },
+};
+
 export const profile = {
   get: async (): Promise<LocalProfile> => {
     const raw = await AsyncStorage.getItem(PROFILE_KEY);

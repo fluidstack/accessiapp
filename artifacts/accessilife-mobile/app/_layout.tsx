@@ -50,6 +50,10 @@ function RootLayoutNav() {
         options={{ title: "Discussion", headerBackTitle: "Back" }}
       />
       <Stack.Screen
+        name="post/new"
+        options={{ title: "New post", presentation: "modal" }}
+      />
+      <Stack.Screen
         name="enquiry/[providerId]"
         options={{ title: "Enquire", presentation: "modal" }}
       />

@@ -41,7 +41,28 @@ export default function CommunityScreen() {
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: c.background }}>
       <ScreenHeader
         title="Community"
-        subtitle="Read-only previews of member discussions."
+        subtitle="Member discussions and stories."
+        trailing={
+          <Pressable
+            onPress={() => router.push("/post/new")}
+            accessibilityRole="button"
+            accessibilityLabel="Start a new discussion"
+            style={{
+              backgroundColor: c.primary,
+              paddingHorizontal: 14,
+              paddingVertical: 10,
+              borderRadius: 999,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Feather name="plus" size={16} color={c.primaryForeground} />
+            <Txt variant="label" color={c.primaryForeground}>
+              New
+            </Txt>
+          </Pressable>
+        }
       />
       <View style={{ paddingHorizontal: 20 }}>
         <SearchBar value={query} onChangeText={setQuery} placeholder="Search threads" />
