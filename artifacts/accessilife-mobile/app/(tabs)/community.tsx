@@ -1,6 +1,6 @@
 import { Feather } from "@expo/vector-icons";
-import { useRouter } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { useFocusEffect, useRouter } from "expo-router";
+import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -8,6 +8,18 @@ import { Txt } from "@/components/Typography";
 import { Badge, Card, Chip, ScreenHeader, SearchBar } from "@/components/ui";
 import { POSTS } from "@/constants/fixtures";
 import { useColors } from "@/hooks/useColors";
+import { localPosts } from "@/lib/storage";
+
+type FeedPost = {
+  id: string;
+  topic: string;
+  title: string;
+  excerpt: string;
+  author: string;
+  authorRole: string;
+  postedDaysAgo: number;
+  replyCount: number;
+};
 
 const TOPICS = [
   "All",
@@ -22,20 +34,44 @@ export default function CommunityScreen() {
   const router = useRouter();
   const [topic, setTopic] = useState("All");
   const [query, setQuery] = useState("");
+  const [mine, setMine] = useState<FeedPost[]>([]);
 
-  const filtered = useMemo(
-    () =>
-      POSTS.filter((p) => {
-        if (topic !== "All" && p.topic !== topic) return false;
-        if (
-          query &&
-          !`${p.title} ${p.excerpt}`.toLowerCase().includes(query.toLowerCase())
-        )
-          return false;
-        return true;
-      }),
-    [topic, query],
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      localPosts.list().then((list) => {
+        if (!alive) return;
+        setMine(
+          list.map((p) => ({
+            id: p.id,
+            topic: p.topic,
+            title: p.title,
+            excerpt: p.body.slice(0, 160),
+            author: "You",
+            authorRole: "Member",
+            postedDaysAgo: 0,
+            replyCount: 0,
+          })),
+        );
+      });
+      return () => {
+        alive = false;
+      };
+    }, []),
   );
+
+  const filtered = useMemo(() => {
+    const all: FeedPost[] = [...mine, ...POSTS];
+    return all.filter((p) => {
+      if (topic !== "All" && p.topic !== topic) return false;
+      if (
+        query &&
+        !`${p.title} ${p.excerpt}`.toLowerCase().includes(query.toLowerCase())
+      )
+        return false;
+      return true;
+    });
+  }, [topic, query, mine]);
 
   return (
     <SafeAreaView edges={["top"]} style={{ flex: 1, backgroundColor: c.background }}>

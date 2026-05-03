@@ -9,7 +9,18 @@ import { Txt } from "@/components/Typography";
 import { Badge, Card, EmptyState, Field, Input } from "@/components/ui";
 import { POSTS } from "@/constants/fixtures";
 import { useColors } from "@/hooks/useColors";
-import { localReplies } from "@/lib/storage";
+import { localPosts, localReplies } from "@/lib/storage";
+
+type AnyPost = {
+  id: string;
+  topic: string;
+  title: string;
+  body: string;
+  author: string;
+  authorRole: string;
+  postedDaysAgo: number;
+  replyCount: number;
+};
 
 const SEED_REPLIES: Record<string, { author: string; body: string; daysAgo: number }[]> = {
   c1: [
@@ -30,12 +41,32 @@ export default function PostDetail() {
     { id: string; body: string; postedAt: string }[]
   >([]);
   const [submitting, setSubmitting] = useState(false);
-
-  const post = POSTS.find((p) => p.id === id);
+  const [post, setPost] = useState<AnyPost | undefined>(() => {
+    const seed = POSTS.find((p) => p.id === id);
+    return seed ? { ...seed } : undefined;
+  });
 
   useEffect(() => {
-    if (id) localReplies.listFor(id).then(setExtraReplies);
-  }, [id]);
+    if (!id) return;
+    localReplies.listFor(id).then(setExtraReplies);
+    if (!post) {
+      localPosts.list().then((list) => {
+        const found = list.find((p) => p.id === id);
+        if (found) {
+          setPost({
+            id: found.id,
+            topic: found.topic,
+            title: found.title,
+            body: found.body,
+            author: "You",
+            authorRole: "Member",
+            postedDaysAgo: 0,
+            replyCount: 0,
+          });
+        }
+      });
+    }
+  }, [id, post]);
 
   if (!post) {
     return (
