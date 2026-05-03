@@ -14,11 +14,12 @@ import { useFonts } from "expo-font";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
-import React, { useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
+import { AnimatedSplash } from "@/components/AnimatedSplash";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { AccessibilityProvider } from "@/lib/accessibility";
 
@@ -70,12 +71,15 @@ export default function RootLayout() {
     Fraunces_500Medium,
     Fraunces_600SemiBold,
   });
+  const [splashDone, setSplashDone] = useState(false);
 
   useEffect(() => {
     if (fontsLoaded || fontError) {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  const onSplashFinish = useCallback(() => setSplashDone(true), []);
 
   if (!fontsLoaded && !fontError) return null;
 
@@ -93,6 +97,7 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                   <KeyboardProvider>
                     <RootLayoutNav />
+                    {!splashDone && <AnimatedSplash onFinish={onSplashFinish} />}
                   </KeyboardProvider>
                 </GestureHandlerRootView>
               </QueryClientProvider>
