@@ -147,7 +147,7 @@ export default function SignUpScreen() {
       >
         <View style={styles.brandRow}>
           <Image
-            source={require("@/assets/images/icon.png")}
+            source={require("@/assets/images/logo.png")}
             style={styles.logo}
             contentFit="cover"
           />
