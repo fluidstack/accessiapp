@@ -1,0 +1,14 @@
+uploads = []
+outputs = []
+
+[[generated]]
+id = "sIL2LrrcibcOxNbVnLrEC"
+uri = "file://artifacts/accessilife-mobile/assets/images/icon.png"
+type = "image"
+title = "accessilife-icon"
+
+[[generated]]
+id = "ZwsyTXGUQIJWgntlULFXd"
+uri = "file://artifacts/accessilife-mobile/assets/images/hero.png"
+type = "image"
+title = "accessilife-hero"
